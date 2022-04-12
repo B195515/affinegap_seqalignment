@@ -4,6 +4,10 @@
 # Code modified from original by Simon Tomlinson, Bioinformatics Algorithms 2022
 # Code adapted from https://github.com/dnase/affine-gap-sequence-alignment
     # for affine gap implementation
+# Modified variable names such as i/x to R (rows), and j/y to C (columns) for readability
+# Added functions to initialize the three different matrices
+# Score calculation is done in one function for simplification
+# Reformatted outputs to screen, added functionality to save output to file
 
 def read_fasta(filename):
     seq = ""
@@ -23,49 +27,41 @@ def read_fasta(filename):
 
 #return match or mismatch score
 def _match(seq1, seq2, R, C):
-    if seq2[R-1] == seq1[C-1]:
-        return seqmatch
-    else:
-        return seqmismatch
+    if seq2[R-1] == seq1[C-1]: return seqmatch
+    else: return seqmismatch
 
 #initializers for matrices
 def _init_x(R, C):
     # x(R,0) = h + (g*R)
-    if R > 0 and C == 0:
-        return MIN
-    else:
-        if C > 0:
-            return S + (E * C)
-        else:
-            return 0
+    if R > 0 and C == 0: return MIN
+    else: 
+        if C > 0: return S + (E * C)
+        else: return 0
+
 def _init_y(R, C):
     # y(0,C) = h + (g*C)
-    if C > 0 and R == 0:
-        return MIN
+    if C > 0 and R == 0: return MIN
     else:
-        if R > 0:
-            return S + (E * R)
-        else:
-            return 0
+        if R > 0: return S + (E * R)
+        else: return 0
+
 def _init_m(R, C):
     # M(0,0) = 0
-    if C == 0 and R == 0:
-        return 0
+    # other cells in top row and leftmost column = -inf
+    if C == 0 and R == 0: return 0
     else:
-        if C == 0 or R == 0:
-            # other cells in top row and leftmost column = -inf
-            return MIN
-        else:
-            return 0
+        if C == 0 or R == 0: return MIN
+        else: return 0
 
-def distance_matrix(seq1, seq2):
+def createBuild_matrix(seq1, seq2):
+    # define rows/cols +1 here is faster than in list comprehension
     rows = len(seq2)+1
     cols = len(seq1)+1
-    # Create the three matrices and score with affine gap penalties
-    X = [[_init_x(R, C) for C in range(0, cols)] for R in range(0, rows)]
-    Y = [[_init_y(R, C) for C in range(0, cols)] for R in range(0, rows)]
-    M = [[_init_m(R, C) for C in range(0, cols)] for R in range(0, rows)]
-
+    # Create the three matrices and initial scoring
+    X = [[_init_x(R, C) for C in range(cols)] for R in range(rows)]
+    Y = [[_init_y(R, C) for C in range(cols)] for R in range(rows)]
+    M = [[_init_m(R, C) for C in range(cols)] for R in range(rows)]
+    # Then find the max score
     for C in range(1, cols):
         for R in range(1, rows):
             # Matrix X: best score given that x[R] aligns to a gap
@@ -76,7 +72,7 @@ def distance_matrix(seq1, seq2):
             M[R][C] = max(_match(seq1, seq2, R, C) + M[R-1][C-1], X[R][C], Y[R][C])
     return [X, Y, M]
 
-def backtrace(seq1, seq2, X, Y, M):
+def traceback(seq1, seq2, X, Y, M):
     # Initialize alignment strings
     topstring = ''
     bottomstring = ''
@@ -142,45 +138,49 @@ def print_matrix(mymatrix):
         print("\n", end="")
     print("##")
 
-#########
+def perform_affine_gaps():
+    # set score rules
+    global seqmatch; global seqmismatch; global S; global E; global MIN
+    S = -10.
+    E = -0.5
+    seqmatch = 1.
+    seqmismatch = -4.
+    MIN = -float("inf")
 
-import argparse
-parser = argparse.ArgumentParser(description='Aligning sequences...')
-parser.add_argument('seq1',action="store",help="First sequence")
-parser.add_argument('seq2',action="store",help="Second sequence")
-margs = parser.parse_args()
-#print(margs)
+    import argparse
+    parser = argparse.ArgumentParser(description='Aligning sequences...')
+    parser.add_argument('seq1',action="store",help="First sequence")
+    parser.add_argument('seq2',action="store",help="Second sequence")
+    margs = parser.parse_args()
+    #print(margs)
 
-# set vars as global if in function
-S = -10.
-E = -0.5
-seqmatch = 1.
-seqmismatch = -4.
-MIN = -float("inf")
+    # input sequences + sequence name in file
+    global sequence1; global sequence2
+    n1, sequence1 = read_fasta(margs.seq1)
+    n2, sequence2 = read_fasta(margs.seq2)
 
-# Read sequences from cmd line args
-n1, sequence1 = read_fasta(margs.seq1)
-n2, sequence2 = read_fasta(margs.seq2)
+    # Print to screen and save to file
+    # import sys
+    # filepath = f"affinegap_{n1}_{n2}.txt"
+    # print(f"Output saved to {filepath}")
+    # print("\nEnd.")
+    # sys.stdout = open(filepath, 'w')
+    print("##")
+    print(f"Name: {n1}\nSequence1: {sequence1}\n##")
+    print(f"Name: {n2}\nSequence2: {sequence2}\n##")
 
-# Print to screen and save to file
-# import sys
-# filepath = f"affinegap_{n1}_{n2}.txt"
-# print(f"Output saved to {filepath}")
-# print("\nEnd.")
-# sys.stdout = open(filepath, 'w')
-print("##")
-print(f"Name: {n1}\nSequence1: {sequence1}\n##")
-print(f"Name: {n2}\nSequence2: {sequence2}\n##")
+    [X, Y, M] = createBuild_matrix(sequence1, sequence2)
+    [topstring, bottomstring, midstring] = traceback(sequence1, sequence2, X, Y, M)
+    print_matrix(M)
+    get_max(M)
 
-[X, Y, M] = distance_matrix(sequence1, sequence2)
-[topstring, bottomstring, midstring] = backtrace(sequence1, sequence2, X, Y, M)
-print_matrix(M)
-get_max(M)
+    print("##\nAlignment with affine gap penalties")
+    print(f"Rules:\nGap opening ({S}), Gap extension ({E}), Match ({seqmatch}), Mismatch ({seqmismatch})")
+    print(topstring[::-1])
+    print(midstring[::-1])
+    print(bottomstring[::-1])
+    print("\n")
+    # sys.stdout.close()
 
-print("##\nAlignment with affine gap penalties")
-print(f"Rules:\nGap opening ({S}), Gap extension ({E}), Match ({seqmatch}), Mismatch ({seqmismatch})")
-print(topstring[::-1])
-print(midstring[::-1])
-print(bottomstring[::-1])
-print("\n")
-# sys.stdout.close()
+## Run program
+perform_affine_gaps()
