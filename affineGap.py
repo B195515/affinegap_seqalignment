@@ -13,6 +13,7 @@ def read_fasta(filename):
             if(line[0]==">"):
                 name = line.replace(">","").rstrip("\n")
                 continue
+            # multiseq file will have concatenated sequences
             seq = seq+line
         import re
         pattern = re.compile(r'\s+')
@@ -21,58 +22,58 @@ def read_fasta(filename):
         return name, seq
 
 #return match or mismatch score
-def _match(seq1, seq2, i, j):
-    if seq2[i-1] == seq1[j-1]:
+def _match(seq1, seq2, R, C):
+    if seq2[R-1] == seq1[C-1]:
         return seqmatch
     else:
         return seqmismatch
 
 #initializers for matrices
-def _init_x(i, j):
-    if i > 0 and j == 0:
+def _init_x(R, C):
+    # x(R,0) = h + (g*R)
+    if R > 0 and C == 0:
         return MIN
     else:
-        if j > 0:
-            return S + (E * j)
+        if C > 0:
+            return S + (E * C)
         else:
             return 0
-
-def _init_y(i, j):
-    # y(0,j) = h + (g*j)
-    if j > 0 and i == 0:
+def _init_y(R, C):
+    # y(0,C) = h + (g*C)
+    if C > 0 and R == 0:
         return MIN
     else:
-        if i > 0:
-            return S + (E * i)
+        if R > 0:
+            return S + (E * R)
         else:
             return 0
-
-def _init_m(i, j):
+def _init_m(R, C):
     # M(0,0) = 0
-    if j == 0 and i == 0:
+    if C == 0 and R == 0:
         return 0
     else:
-        if j == 0 or i == 0:
+        if C == 0 or R == 0:
             # other cells in top row and leftmost column = -inf
             return MIN
         else:
             return 0
 
 def distance_matrix(seq1, seq2):
-    rows = len(seq2) + 1
-    cols = len(seq1) + 1
+    rows = len(seq2)+1
+    cols = len(seq1)+1
     # Create the three matrices and score with affine gap penalties
-    X = [[_init_x(i, j) for j in range(0, cols)] for i in range(0, rows)]
-    Y = [[_init_y(i, j) for j in range(0, cols)] for i in range(0, rows)]
-    M = [[_init_m(i, j) for j in range(0, cols)] for i in range(0, rows)]
-    for j in range(1, cols):
-        for i in range(1, rows):
-            # Matrix X: best score given that x[i] aligns to a gap
-            X[i][j] = max((S + E + M[i][j-1]), (E + X[i][j-1]), (S + E + Y[i][j-1]))
-            # Matrix Y: best score given that y[j] aligns to a gap
-            Y[i][j] = max((S + E + M[i-1][j]), (S + E + X[i-1][j]), (E + Y[i-1][j]))
-            # Matrix M: best score given than x[i] aligns to y[j]
-            M[i][j] = max(_match(seq1, seq2, i, j) + M[i-1][j-1], X[i][j], Y[i][j])
+    X = [[_init_x(R, C) for C in range(0, cols)] for R in range(0, rows)]
+    Y = [[_init_y(R, C) for C in range(0, cols)] for R in range(0, rows)]
+    M = [[_init_m(R, C) for C in range(0, cols)] for R in range(0, rows)]
+
+    for C in range(1, cols):
+        for R in range(1, rows):
+            # Matrix X: best score given that x[R] aligns to a gap
+            X[R][C] = max((S + E + M[R][C-1]), (E + X[R][C-1]), (S + E + Y[R][C-1]))
+            # Matrix Y: best score given that y[C] aligns to a gap
+            Y[R][C] = max((S + E + M[R-1][C]), (S + E + X[R-1][C]), (E + Y[R-1][C]))
+            # Matrix M: best score given than x[R] aligns to y[C]
+            M[R][C] = max(_match(seq1, seq2, R, C) + M[R-1][C-1], X[R][C], Y[R][C])
     return [X, Y, M]
 
 def backtrace(seq1, seq2, X, Y, M):
@@ -80,28 +81,28 @@ def backtrace(seq1, seq2, X, Y, M):
     topstring = ''
     bottomstring = ''
     midstring = ''
-    i = len(seq2)
-    j = len(seq1)
+    R = len(seq2)
+    C = len(seq1)
     print("Building traceback...")
-    while (i>0 or j>0):
+    while (R>0 or C>0):
         # If match, trace diagonally (-1 on both indexes)
-        if (i>0 and j>0 and M[i][j] == M[i-1][j-1] + _match(seq1, seq2, i, j)):
-            topstring += seq1[j-1]
-            bottomstring += seq2[i-1]
+        if (R>0 and C>0 and M[R][C] == M[R-1][C-1] + _match(seq1, seq2, R, C)):
+            topstring += seq1[C-1]
+            bottomstring += seq2[R-1]
             midstring += "|"
-            i -= 1; j -= 1
+            R -= 1; C -= 1
         # If mismatch, trace horizontally/vertically based on alignment
-            # with either matrix X or matrix Y at the same index
-        elif (i>0 and M[i][j] == Y[i][j]):
+        # with either matrix X or matrix Y at the same index
+        elif (R>0 and M[R][C] == Y[R][C]):
             topstring += '-'
-            bottomstring += seq2[i-1]
+            bottomstring += seq2[R-1]
             midstring += " "
-            i -= 1
-        elif (j>0 and M[i][j] == X[i][j]):
-            topstring += seq1[j-1]
+            R -= 1
+        elif (C>0 and M[R][C] == X[R][C]):
+            topstring += seq1[C-1]
             bottomstring += '-'
             midstring += " "
-            j -= 1
+            C -= 1
     return [topstring, bottomstring, midstring]
 
 def get_max(mymatrix):
@@ -111,13 +112,13 @@ def get_max(mymatrix):
     rows = len(mymatrix)
     cols = len(mymatrix[0])
 
-    for i in range(1, rows):
-        for j in range(1, cols):
-            if mymatrix[i][j]<max:
+    for R in range(1, rows):
+        for C in range(1, cols):
+            if mymatrix[R][C]<max:
                 # "less than" bcs scores are negative
-                max = mymatrix[i][j]
-                mrow = i
-                mcol = j
+                max = mymatrix[R][C]
+                mrow = R
+                mcol = C
     print(f"Max score: {max} at r:{mrow} c:{mcol}")
     # get index of lowest scoring point
     return [mrow,mcol]
@@ -132,12 +133,12 @@ def print_matrix(mymatrix):
         # print columns
         print(base, "\t", end="")
     print("\n", end="")
-    for i in range(0, rows):
+    for R in range(0, rows):
         # print rows
-        print(s2[i], "\t", end="")
-        for j in range(0, cols):
+        print(s2[R], "\t", end="")
+        for C in range(0, cols):
             # print score values in best scoring alignment
-            print(mymatrix[i][j], "\t", end="")
+            print(mymatrix[R][C], "\t", end="")
         print("\n", end="")
     print("##")
 
@@ -160,6 +161,13 @@ MIN = -float("inf")
 # Read sequences from cmd line args
 n1, sequence1 = read_fasta(margs.seq1)
 n2, sequence2 = read_fasta(margs.seq2)
+
+# Print to screen and save to file
+# import sys
+# filepath = f"affinegap_{n1}_{n2}.txt"
+# print(f"Output saved to {filepath}")
+# print("\nEnd.")
+# sys.stdout = open(filepath, 'w')
 print("##")
 print(f"Name: {n1}\nSequence1: {sequence1}\n##")
 print(f"Name: {n2}\nSequence2: {sequence2}\n##")
@@ -170,12 +178,9 @@ print_matrix(M)
 get_max(M)
 
 print("##\nAlignment with affine gap penalties")
+print(f"Rules:\nGap opening ({S}), Gap extension ({E}), Match ({seqmatch}), Mismatch ({seqmismatch})")
 print(topstring[::-1])
 print(midstring[::-1])
 print(bottomstring[::-1])
 print("\n")
-
-print(topstring)
-print(midstring)
-print(bottomstring)
-print("\n")
+# sys.stdout.close()
